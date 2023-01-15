@@ -150,7 +150,6 @@ void SingleMInstruction::output(){
         fprintf(yyout, "\teor ");
         break;
     }
-    
     this->PrintCond();
     this->def_list[0]->output();
     fprintf(yyout, ", ");
@@ -204,7 +203,6 @@ void BinaryMInstruction::output()
     default:
         break;
     }
-
     this->PrintCond();
     this->def_list[0]->output();
     fprintf(yyout, ", ");
@@ -220,7 +218,7 @@ LoadMInstruction::LoadMInstruction(MachineBlock* p,
 {
     this->parent = p;
     this->type = MachineInstruction::LOAD;
-    this->op = -1;
+    this->op = -1; // no opcode
     this->cond = cond;
     this->def_list.push_back(dst);
     this->use_list.push_back(src1);
@@ -268,7 +266,7 @@ StoreMInstruction::StoreMInstruction(MachineBlock* p,
     // TODO
     this->parent = p;
     this->type = MachineInstruction::STORE;
-    this->op = op;
+    this->op = -1; // no opcode
     this->cond = cond;
     this->use_list.push_back(src1);
     this->use_list.push_back(src2);
@@ -288,8 +286,7 @@ void StoreMInstruction::output()
     this->use_list[0]->output();
     fprintf(yyout, ", ");
 
-    // store address
-    if (this->use_list[1]->isReg() || this->use_list[1]->isVReg())
+    if (this->use_list[1]->isReg() || this->use_list[1]->isVReg()) // reg's addr 
         fprintf(yyout, "[");
     this->use_list[1]->output();
 
@@ -301,7 +298,6 @@ void StoreMInstruction::output()
     if (this->use_list[1]->isReg() || this->use_list[1]->isVReg())
         fprintf(yyout, "]");
     fprintf(yyout, "\n");
-    
 }
 
 MovMInstruction::MovMInstruction(MachineBlock* p, int op, 
@@ -359,7 +355,6 @@ void BranchMInstruction::output()
             fprintf(yyout, "\tbl");
             break;
     }
-
     PrintCond();
     fprintf(yyout, " ");
     this->use_list[0]->output();
@@ -431,20 +426,20 @@ void StackMInstrcuton::output()
     fprintf(yyout, "{");
     this->use_list[0]->output();
     
-    long unsigned int index = 1;
-    while (index < use_list.size()) 
-    {
-        fprintf(yyout, ", ");
-        this->use_list[index]->output();
-        index++;
-    }
-    // auto index = use_list.begin();
-    // while (index != use_list.end()) 
+    // long unsigned int index = 1;
+    // while (index < use_list.size()) 
     // {
     //     fprintf(yyout, ", ");
-    //     (*index)->output();
+    //     this->use_list[index]->output();
     //     index++;
     // }
+    auto index = use_list.begin();
+    while (index != use_list.end()) 
+    {
+        fprintf(yyout, ", ");
+        (*index)->output();
+        index++;
+    }
     fprintf(yyout, "}\n");
 }
 
@@ -478,7 +473,8 @@ void MachineBlock::output()
                     else 
                     {
                         offset += 4;
-                        LoadMInstruction *cur_inst = new LoadMInstruction(this, new MachineOperand(MachineOperand::REG, 0), new MachineOperand(MachineOperand::REG, 11), new MachineOperand(MachineOperand::IMM, offset));
+                        LoadMInstruction *cur_inst = new LoadMInstruction(this, new MachineOperand(MachineOperand::REG, 0),
+                            new MachineOperand(MachineOperand::REG, 11), new MachineOperand(MachineOperand::IMM, offset));
                         cur_inst->output();
                     }
                 }
@@ -488,6 +484,7 @@ void MachineBlock::output()
                 auto cur_inst = new StackMInstrcuton(this, StackMInstrcuton::POP, parent->getSavedRegs(), new MachineOperand(MachineOperand::REG, 11), new MachineOperand(MachineOperand::REG, 14));
                 cur_inst->output();
             }
+            (inst_list[i])->output();
             /*if ((inst_list[i])->isAdd()) 
             {
                 auto dst = inst_list[i]->getDef()[0];
@@ -498,10 +495,8 @@ void MachineBlock::output()
                     (inst_list[i])->getUse()[1]->setVal(size);
                 }
             }*/
-            (inst_list[i])->output();
         }
     }
-    
 }
 
 void MachineFunction::output()
@@ -524,11 +519,11 @@ void MachineFunction::output()
     (new MovMInstruction(nullptr, MovMInstruction::MOV, fp, sp))->output();
     (new BinaryMInstruction(nullptr, BinaryMInstruction::SUB, sp, sp, new MachineOperand(MachineOperand::IMM, AllocSpace(0))))->output();
     
+    //(new StackMInstrcuton(nullptr, StackMInstrcuton::POP, getSavedRegs(), fp, lr)) ->output();
     // Traverse all the block in block_list to print assembly code.
     for(auto iter : block_list)
         iter->output();
     
-    //(new StackMInstrcuton(nullptr, StackMInstrcuton::POP, getSavedRegs(), fp, lr)) ->output();
 }
 
 std::vector<MachineOperand*> MachineFunction::getSavedRegs() 
@@ -553,10 +548,12 @@ void MachineUnit::PrintGlobalDecl()
 
     for (long unsigned int i = 0; i < global_list.size(); i++) 
     {
+        // get symbol entry, exprnode
         IdentifierSymbolEntry* se = (IdentifierSymbolEntry*)global_list[i];
         ExprNode* nu = (ExprNode*)glonum_list[i];
 
         if(nu!=nullptr){
+            // get num type
             ConstantSymbolEntry* con=(ConstantSymbolEntry*)nu->getSymPtr();
             if (se->getType()==TypeSystem::constintType) 
             {
@@ -571,15 +568,18 @@ void MachineUnit::PrintGlobalDecl()
             }
         }
         else{
+            // no num
             fprintf(yyout, ".global %s\n", se->toStr().c_str());
             fprintf(yyout, ".size %s, %d\n", se->toStr().c_str(), 4);
             fprintf(yyout, "%s:\n", se->toStr().c_str());
+            // initialize with 0
             fprintf(yyout, "\t.word 0\n");
         }
     }
 
     if (!constIdx.empty()) 
     {
+        // declare const num
         fprintf(yyout, ".section .rodata\n\n");
         for (long unsigned int i = 0; i < constIdx.size(); i++) 
         {

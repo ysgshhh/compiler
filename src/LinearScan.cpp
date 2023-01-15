@@ -162,7 +162,7 @@ void LinearScan::computeLiveIntervals()
 bool LinearScan::linearScanRegisterAllocation()
 {
     // Todo
-    bool success = true;
+    bool alloc_success = true;
     active.clear();
     regs.clear();
     for (int i = 4; i < 11; i++)
@@ -174,7 +174,7 @@ bool LinearScan::linearScanRegisterAllocation()
         if (regs.empty())
         {
             spillAtInterval(i);
-            success = false;
+            alloc_success = false;
         } 
         else 
         {
@@ -184,7 +184,7 @@ bool LinearScan::linearScanRegisterAllocation()
             sort(active.begin(), active.end(), compareEnd);
         }
     }
-    return success;
+    return alloc_success;
 }
 
 void LinearScan::modifyCode()
@@ -210,20 +210,21 @@ void LinearScan::genSpillCode()
          * The vreg should be spilled to memory.
          * 1. insert ldr inst before the use of vreg
          * 2. insert str inst after the def of vreg
-         */ 
+         */
         interval->disp = -func->AllocSpace(4);
-        auto off = new MachineOperand(MachineOperand::IMM, interval->disp);
+        // alloc space in stack, get fp offset in stack
+        auto offset = new MachineOperand(MachineOperand::IMM, interval->disp);
         auto fp = new MachineOperand(MachineOperand::REG, 11);
-        for (auto use : interval->uses) 
+        for (auto use : interval->uses)
         {
             MachineOperand* temp = new MachineOperand(*use);
-            auto inst = new LoadMInstruction(use->getParent()->getParent(), temp, fp, off);
+            auto inst = new LoadMInstruction(use->getParent()->getParent(), temp, fp, offset);
             use->getParent()->insertBefore(inst);
         }
-        for (auto def : interval->defs) 
+        for (auto def : interval->defs)
         {
             MachineOperand* temp = new MachineOperand(*def);
-            auto inst = new StoreMInstruction(def->getParent()->getParent(), temp, fp, off);
+            auto inst = new StoreMInstruction(def->getParent()->getParent(), temp, fp, offset);
             def->getParent()->insertAfter(inst);
         }
     }
@@ -234,9 +235,9 @@ void LinearScan::expireOldIntervals(Interval *interval)
     // Todo
     auto it = active.begin();
     while (it != active.end()) {
-        if ((*it)->end >= interval->start)
+        if ((*it)->end >= interval->start) // whether the end time earlier then start
             return;
-        regs.push_back((*it)->rreg);
+        regs.push_back((*it)->rreg); // not conflict to current active unhandled interval
         it = active.erase(find(active.begin(), active.end(), *it));
         sort(regs.begin(), regs.end());
     }
@@ -246,9 +247,9 @@ void LinearScan::spillAtInterval(Interval *interval)
 {
     // Todo
     auto spill = active.back();
-    if (spill->end > interval->end) {
+    if (spill->end > interval->end) { // no inactive reg, choose one to spill
         spill->spill = true;
-        interval->rreg = spill->rreg;
+        interval->rreg = spill->rreg; // 占用的寄存器分配给unhandled interval
         active.push_back(interval);
         sort(active.begin(), active.end(), compareEnd);
     } else {
